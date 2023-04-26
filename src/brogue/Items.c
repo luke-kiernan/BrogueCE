@@ -74,7 +74,7 @@ item *initializeItem() {
 // and is not inserted into the item chain!
 item *generateItem(unsigned short theCategory, short theKind) {
     item *theItem = initializeItem();
-    makeItemInto(theItem, theCategory, theKind);
+    makeItemInto(theItem, theCategory, theKind, false, 0);
     return theItem;
 }
 
@@ -108,9 +108,11 @@ unsigned long pickItemCategory(unsigned long theCategory) {
 }
 
 // Sets an item to the given type and category (or chooses randomly if -1) with all other stats
-item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
+// If item was wished for, sets theItem->enchant1 to enchantLvl, and marks as identified
+item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind, boolean wishedFor,
+                   short enchantLvl) {
+    
     itemTable *theEntry = NULL;
-
     if (itemCategory <= 0) {
         itemCategory = ALL_ITEMS;
     }
@@ -168,7 +170,7 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
                     break;
             }
 
-            if (rand_percent(40)) {
+            if (rand_percent(40) && wishedFor == false) {
                 theItem->enchant1 += rand_range(1, 3);
                 if (rand_percent(50)) {
                     // cursed
@@ -205,7 +207,11 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
                 theItem->flags &= ~(ITEM_CURSED | ITEM_RUNIC); // throwing weapons can't be cursed or runic
                 theItem->enchant1 = 0; // throwing weapons can't be magical
             }
-            theItem->charges = WEAPON_KILLS_TO_AUTO_ID; // kill 20 enemies to auto-identify
+            if (wishedFor == true){
+              theItem->enchant1 = enchantLvl;
+            } else {
+              theItem->charges = WEAPON_KILLS_TO_AUTO_ID; // kill 20 enemies to auto-identify
+            }
             break;
 
         case ARMOR:
@@ -216,8 +222,7 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
             theItem->armor = randClump(armorTable[itemKind].range);
             theItem->strengthRequired = armorTable[itemKind].strengthRequired;
             theItem->displayChar = G_ARMOR;
-            theItem->charges = ARMOR_DELAY_TO_AUTO_ID; // this many turns until it reveals its enchants and whether runic
-            if (rand_percent(40)) {
+            if (rand_percent(40) && wishedFor == false) {
                 theItem->enchant1 += rand_range(1, 3);
                 if (rand_percent(50)) {
                     // cursed
@@ -238,6 +243,11 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
                         theItem->enchant1++;
                     }
                 }
+            }
+            if (wishedFor == true){
+              theItem->enchant1 = enchantLvl;
+            } else {
+              theItem->charges = ARMOR_DELAY_TO_AUTO_ID; // this many turns until it reveals its enchants and whether runic
             }
             break;
         case SCROLL:
@@ -262,7 +272,7 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
             theEntry = &staffTable[itemKind];
             theItem->displayChar = G_STAFF;
             theItem->charges = 2;
-            if (rand_percent(50)) {
+            if (rand_percent(50) && wishedFor == false) {
                 theItem->charges++;
                 if (rand_percent(15)) {
                     theItem->charges++;
@@ -270,6 +280,14 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
                         theItem->charges++;
                     }
                 }
+            }
+            if (wishedFor == true){
+              theItem->charges = enchantLvl;
+            }
+            if (wishedFor == true){
+              theItem->charges = enchantLvl;
+            } else {
+              theItem->charges = randClump(wandTable[itemKind].range);
             }
             theItem->enchant1 = theItem->charges;
             theItem->enchant2 = (itemKind == STAFF_BLINKING || itemKind == STAFF_OBSTRUCTION ? 1000 : 500); // start with no recharging mojo
@@ -280,7 +298,11 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
             }
             theEntry = &wandTable[itemKind];
             theItem->displayChar = G_WAND;
-            theItem->charges = randClump(wandTable[itemKind].range);
+            if (wishedFor == true){
+              theItem->charges = enchantLvl;
+            } else {
+              theItem->charges = randClump(wandTable[itemKind].range);
+            }
             break;
         case RING:
             if (itemKind < 0) {
@@ -288,9 +310,14 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
             }
             theEntry = &ringTable[itemKind];
             theItem->displayChar = G_RING;
-            theItem->enchant1 = randClump(ringTable[itemKind].range);
-            theItem->charges = RING_DELAY_TO_AUTO_ID; // how many turns of being worn until it auto-identifies
-            if (rand_percent(16)) {
+
+            if (wishedFor ==  true){
+                theItem->enchant1 = enchantLvl;
+            } else {
+                theItem->enchant1 = randClump(ringTable[itemKind].range);
+                theItem->charges = RING_DELAY_TO_AUTO_ID; // how many turns of being worn until it auto-identifies
+            }
+            if (rand_percent(16) && wishedFor == false) {
                 // cursed
                 theItem->enchant1 *= -1;
                 theItem->flags |= ITEM_CURSED;
@@ -307,8 +334,11 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
             theItem->displayChar = G_CHARM;
             theItem->charges = 0; // Charms are initially ready for use.
             theItem->enchant1 = randClump(charmTable[itemKind].range);
-            while (rand_percent(7)) {
+            while (rand_percent(7) && wishedFor == false) {
                 theItem->enchant1++;
+            }
+            if (wishedFor == true){
+                theItem->enchant1 = enchantLvl;
             }
             theItem->flags |= ITEM_IDENTIFIED;
             break;
@@ -346,6 +376,9 @@ item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind) {
         theItem->flags |= ITEM_CAN_BE_IDENTIFIED;
     }
     theItem->kind = itemKind;
+    if (wishedFor == true){
+        identify(theItem); // replace with this once I have it working.
+    }
 
     return theItem;
 }

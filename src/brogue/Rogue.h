@@ -757,6 +757,7 @@ enum itemCategory {
     PRENAMED_CATEGORY   = (FOOD | GOLD | AMULET | GEM | KEY),
     NEVER_IDENTIFIABLE  = (FOOD | CHARM | GOLD | AMULET | GEM | KEY),
     CAN_BE_SWAPPED      = (WEAPON | ARMOR | STAFF | CHARM | RING),
+    CAN_BE_WISHED_FOR   = (FOOD|POTION|WEAPON|ARMOR|STAFF|WAND|SCROLL|RING|CHARM),
     ALL_ITEMS           = (FOOD|POTION|WEAPON|ARMOR|STAFF|WAND|SCROLL|RING|CHARM|GOLD|AMULET|GEM|KEY),
 };
 
@@ -1186,6 +1187,7 @@ enum tileFlags {
 #define AUTOPLAY_KEY        'A'
 #define SEED_KEY            '~'
 #define EASY_MODE_KEY       '&'
+#define WISH_KEY            '*'
 #define ESCAPE_KEY          '\033'
 #define RETURN_KEY          '\012'
 #define DELETE_KEY          '\177'
@@ -2302,6 +2304,7 @@ typedef struct playerCharacter {
     boolean updatedMapToSafeTerrainThisTurn;// so it's updated no more than once per turn
     boolean updatedMapToShoreThisTurn;      // so it's updated no more than once per turn
     boolean easyMode;                   // enables easy mode
+    boolean usedWish;                   // enables wishing
     boolean inWater;                    // helps with the blue water filter effect
     boolean heardCombatThisTurn;        // so you get only one "you hear combat in the distance" per turn
     boolean creaturesWillFlashThisTurn; // there are creatures out there that need to flash before the turn ends
@@ -2712,6 +2715,7 @@ extern "C" {
     void gameOver(char *killedBy, boolean useCustomPhrasing);
     void victory(boolean superVictory);
     void enableEasyMode();
+    void wishForItem();
     boolean tryParseUint64(char *str, uint64_t *num);
     uint64_t rand_64bits();
     long rand_range(long lowerBound, long upperBound);
@@ -3123,7 +3127,8 @@ extern "C" {
     item *initializeItem();
     item *generateItem(unsigned short theCategory, short theKind);
     short chooseKind(itemTable *theTable, short numKinds);
-    item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind);
+     item *makeItemInto(item *theItem, unsigned long itemCategory, short itemKind,
+                            boolean wishedFor, short enchantLvl);
     void updateEncumbrance();
     short displayedArmorValue();
     short armorValueIfUnenchanted();

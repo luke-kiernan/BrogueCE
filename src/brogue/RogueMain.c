@@ -325,6 +325,7 @@ void initializeRogue(uint64_t seed) {
     rogue.justRested = false;
     rogue.justSearched = false;
     rogue.easyMode = false;
+    rogue.usedWish = false;
     rogue.inWater = false;
     rogue.creaturesWillFlashThisTurn = false;
     rogue.updatedSafetyMapThisTurn = false;
@@ -1249,7 +1250,7 @@ void victory(boolean superVictory) {
         theEntry.score /= 10;
     }
 
-    if (!rogue.wizard && !rogue.playbackMode) {
+    if (!rogue.wizard && !rogue.usedWish && !rogue.playbackMode) {
         qualified = saveHighScore(theEntry);
     } else {
         qualified = false;
@@ -1299,6 +1300,143 @@ void enableEasyMode() {
         message("But great power comes at a great price -- specifically, a 90% income tax rate.", 0);
     } else {
         message("The evil dissipates, hissing, from the air around you.", 0);
+    }
+}
+
+// wishing. Must use object's name, not its flavor.
+// You can wish for impossible items (a +0 staff),
+// but using them might crash the game.
+// They appear fully charged, identity known.
+// TODO: runics don't appear known
+void wishForItem(){
+    if (!rogue.usedWish){
+        message("You hear whispers about powerful artifacts, but at great cost.", REQUIRE_ACKNOWLEDGMENT);
+        if (confirm("Sacrifice your soul in exchange for summoning arbitrary items (i.e. enable wishing)?", false)) {
+            recordKeystroke(WISH_KEY, false, true);
+            player.info.displayChar = '$';
+            rogue.usedWish = true;
+            refreshDungeonCell(player.loc.x, player.loc.y);
+            refreshSideBar(-1, -1, false);
+            message("A magical genie awaits your request. You are now a $.", REQUIRE_ACKNOWLEDGMENT);
+        } else {
+            message("The whispers fade.", 0);
+        }
+    }
+    if (rogue.usedWish){
+        char requestedItem[COLS] = {0};
+        if(!getInputTextString(requestedItem, "Desired item: \"", COLS, "", "\"", TEXT_INPUT_NORMAL, false)){
+            return; // canceled by player.
+            // oddly the "Desired item" prompt sticks around until you hit another key.
+        }    
+        // record for playback purposes
+        unsigned char command[COLS+1];
+        command[0] = WISH_KEY;
+        command[1] = '\0';
+        strcat((char *) command, (char *) requestedItem);
+        recordKeystrokeSequence(command);
+        recordKeystroke(RETURN_KEY, false, false);
+        // go thru all the items looking for word matches
+        short itemCategory = -1;
+        short itemKind = -1;
+        short maxLenMatch = 0; // prefer longer match ("war axe" > "axe")
+        for (short cat = 0; cat < NUMBER_ITEM_CATEGORIES; ++cat){
+            // if not 0/1/2 (food/weapon/armor), check for category name
+            boolean mightBeOfCategory = (cat < 3 || strstr(requestedItem, itemCategoryNames[cat]) != NULL )
+                                        && (Fl(cat) & CAN_BE_WISHED_FOR);
+            if (!mightBeOfCategory)
+                continue;
+            short numberOfKinds = itemKindCount(Fl(cat), 0);
+            itemTable * tableForCat = tableForItemCategory(Fl(cat));
+            for(short kind = 0; kind < numberOfKinds; ++kind){
+                char * itemName = (tableForCat[kind]).name;
+                if (strstr(requestedItem, itemName) != NULL && strlen(itemName) > maxLenMatch){
+                    itemKind = kind;
+                    itemCategory = cat;
+                    maxLenMatch = strlen(itemName);
+                }
+            }
+            if (maxLenMatch > 0)
+                break;
+        }
+        // the only chars that are 0-9 should be enchant level.
+        short enchantLvl = 0;
+        char * startEnchantLvl = requestedItem;
+        while (!(*startEnchantLvl >= '0' && *startEnchantLvl <= '9') &&
+                *startEnchantLvl != '\0')
+            ++startEnchantLvl;
+        char * endEnchantLvl = startEnchantLvl;
+        while(*endEnchantLvl >= '0' && *endEnchantLvl <= '9' && 
+                *endEnchantLvl != '\0')
+            ++endEnchantLvl;
+        if (endEnchantLvl > startEnchantLvl){
+            char enchantLvlString[COLS+1] = {0};
+            memcpy(enchantLvlString, startEnchantLvl,
+                    endEnchantLvl - startEnchantLvl);
+            enchantLvl = atoi(enchantLvlString);
+        }
+        if (startEnchantLvl > requestedItem && 
+            *(startEnchantLvl-1) == '-')
+            enchantLvl *= -1;
+        enchantLvl = max(min(enchantLvl, 50), -50);
+    if (itemCategory != -1){ // make the item
+            item *theItem = initializeItem();
+            makeItemInto(theItem, Fl(itemCategory), itemKind, true, enchantLvl);
+            if ( (Fl(itemCategory) | WEAPON | ARMOR | RING) && // cursed status
+                            strstr(requestedItem, "cursed") != NULL)
+                theItem->flags |= ITEM_CURSED;
+            if (Fl(itemCategory) | WEAPON | ARMOR){ // runic status
+                short numberRunicKinds[2] = {NUMBER_WEAPON_RUNIC_KINDS,
+                                            NUMBER_ARMOR_ENCHANT_KINDS};
+                for(short i = 0; i < 2; ++i)
+                    for(short j = 0; j < numberRunicKinds[i]; ++j)
+                        if(strstr(requestedItem, i == 0 ? 
+                            weaponRunicNames[j] : armorRunicNames[j])
+                            != NULL ){
+                            theItem->flags |= ITEM_RUNIC;
+                            theItem->enchant2 = j;
+                        }
+                // monster class for immunity/slaying.
+                if( (Fl(itemCategory) == WEAPON && theItem->enchant2 == W_SLAYING)
+                    || (Fl(itemCategory) == ARMOR && theItem->enchant2 == A_IMMUNITY)){
+                    short monsterClass = -1;
+                    for (short i = 0; i < MONSTER_CLASS_COUNT; ++i)
+                        if(strstr(requestedItem, monsterClassCatalog[i].name) != NULL)
+                            monsterClass = i;
+                    if (monsterClass != -1)
+                        theItem->vorpalEnemy = monsterClass;
+                    else // could not parse. just remove the runic.
+                        theItem->flags &= ~ITEM_RUNIC;
+                }
+            }
+            if(theItem->flags & ITEM_RUNIC)
+                theItem->flags |= ITEM_RUNIC_IDENTIFIED;
+            pos placeAt;
+            boolean couldPlace = getQualifyingLocNear(&placeAt, player.loc.x, player.loc.y, true, 0,
+                (T_OBSTRUCTS_ITEMS | T_OBSTRUCTS_PASSABILITY | T_PATHING_BLOCKER), (HAS_ITEM), false, false);
+            if (couldPlace){
+                placeItem(theItem, placeAt.x, placeAt.y);
+                refreshDungeonCell(placeAt.x, placeAt.y);
+                char received[2*COLS], entered[2*COLS], wishResult[COLS];
+                char * firstNonSpace = requestedItem;
+                while(*firstNonSpace != '\0' && *firstNonSpace == ' ')
+                    ++firstNonSpace;
+                sprintf(entered, "You request a%s %s.",
+                            (isVowelish(firstNonSpace) ? "n" : ""),
+                            firstNonSpace);
+                message(entered, 0);
+                itemName(theItem, wishResult, true, true, NULL);
+                if (placeAt.x == player.loc.x && placeAt.y == player.loc.y){
+                    sprintf(received, "%s appears at your feet.", wishResult);
+                    message(received, 0);
+                    pickUpItemAt(placeAt.x, placeAt.y);
+                } else {
+                    sprintf(received, "%s appears nearby.", wishResult);
+                    message(received, 0);
+                }
+            } else
+                message("Could not find nearby place for item.", 0);
+        } else 
+            message("Request could not be understood.", 0);
     }
 }
 

@@ -2721,6 +2721,9 @@ void executeKeystroke(signed long keystroke, boolean controlKey, boolean shiftKe
                 enableEasyMode();
             //}
             break;
+        case WISH_KEY:
+            wishForItem();
+            break;
         case PRINTSCREEN_KEY:
             if (takeScreenshot()) {
                 flashTemporaryAlert(" Screenshot saved in save directory ", 2000);
