@@ -16,3 +16,7 @@ BrogueCE-*
 *.gcov
 *.desktop
 gmon.out
+
+# Mac system files
+src/.DS_Store
+.DS_Store
